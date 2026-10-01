@@ -1,6 +1,7 @@
 package com.dan.talsperre;
 
 import com.dan.fframe.FFrame;
+import com.dan.talsperre.ui.AppIcon;
 import com.dan.talsperre.ui.ControlPanel;
 import com.dan.talsperre.ui.ViewPanel;
 
@@ -28,6 +29,7 @@ public final class TalsperreApp {
 
     private static void open() {
         FFrame f = new FFrame("Talsperre · Edertalsperre, Edersee");
+        AppIcon.install(f);
         ViewPanel view = new ViewPanel();
         ControlPanel controls = new ControlPanel(view);
         JLabel status = new JLabel(" ");
@@ -61,9 +63,51 @@ public final class TalsperreApp {
         f.setLocationRelativeTo(null);
         f.setResizable(true);
         f.setVisible(true);
+        AppIcon.install(f);
+        startMaximized(f);
         view.start();
         Runtime.getRuntime().addShutdownHook(new Thread(view::stop, "Talsperre-Ende"));
         view.requestFocusInWindow();
+    }
+
+    /**
+     * Startet maximiert (ExtendedState MAXIMIZED_BOTH), ohne die Taskleiste zu verdecken. Die normale
+     * Größe von 1400 × 860 bleibt als Rückfall erhalten; die Schaltfläche „Wiederherstellen“ des FFrame
+     * kennt den Zustand und stellt die normale Größe wieder her. Die Fenstergröße bleibt veränderbar.
+     */
+    private static void startMaximized(FFrame f) {
+        java.awt.Rectangle normal = f.getBounds();
+        f.setMaximizedBounds(java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().getMaximumWindowBounds());
+        f.setExtendedState(f.getExtendedState() | java.awt.Frame.MAXIMIZED_BOTH);
+        try {
+            // Die Titelleiste des FFrame führt einen eigenen Maximiert-Zustand; ihn angleichen
+            for (java.lang.reflect.Field fd : FFrame.class.getDeclaredFields()) {
+                if (!fd.getType().getSimpleName().equals("FTaskbar")) continue;
+                fd.setAccessible(true);
+                Object bar = fd.get(f);
+                Class<?> bc = bar.getClass();
+                java.lang.reflect.Field mx = bc.getDeclaredField("maximized"), rb = bc.getDeclaredField("restoreBounds"),
+                        btn = bc.getDeclaredField("btnMaximize");
+                mx.setAccessible(true); rb.setAccessible(true); btn.setAccessible(true);
+                mx.setBoolean(bar, true);
+                rb.set(bar, normal);
+                Object icon = btn.get(bar);
+                icon.getClass().getMethod("setType", com.dan.ficons.FIconType.class).invoke(icon, com.dan.ficons.FIconType.RESTORE);
+                ((javax.swing.JComponent) icon).setToolTipText("Wiederherstellen");
+                ((java.awt.Component) icon).addMouseListener(new java.awt.event.MouseAdapter() {
+                    @Override public void mouseReleased(java.awt.event.MouseEvent e) {
+                        SwingUtilities.invokeLater(() -> {
+                            if ((f.getExtendedState() & java.awt.Frame.MAXIMIZED_BOTH) != 0) {
+                                f.setExtendedState(f.getExtendedState() & ~java.awt.Frame.MAXIMIZED_BOTH);
+                                f.setBounds(normal);
+                            }
+                        });
+                    }
+                });
+            }
+        } catch (Exception e) {
+            // Unkritisch: f ist bereits über ExtendedState maximiert
+        }
     }
 
     private TalsperreApp() { }
